@@ -623,33 +623,41 @@ void VideoManager::_restartAllVideos()
 
 void VideoManager::_restartDecoding()
 {
-    qCDebug(VideoManagerLog) << "Decoding restart requested (keeping RTSP alive)";
+    qCDebug(VideoManagerLog) << "Decoding suspend requested (keeping RTSP alive)";
     for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
         if (!receiver || !receiver->started()) {
             continue;
         }
 
-        // Stop decoding, then restart it after a brief delay to allow GL cleanup
-        receiver->stopDecoding();
+        // Immediately suspend decoding: close valve and tear down decoder/sink.
+        // Do NOT restart yet — the air unit hasn't switched resolution yet.
+        // If we restart now, the new decoder would catch old-resolution frames,
+        // then the caps change would trigger a GL error.
+        receiver->suspendDecoding();
+    }
 
-        // Recreate the video sink and restart decoding
-        QTimer::singleShot(500, this, [this, receiver]() {
-            if (!receiver) {
-                return;
+    // Wait for the air unit to complete the resolution switch before restarting.
+    // From logs, PARAM_EXT_ACK arrives in ~500ms. 1.5s gives plenty of margin.
+    QTimer::singleShot(1500, this, [this]() {
+        qCDebug(VideoManagerLog) << "Restarting decoding after resolution switch delay";
+        for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
+            if (!receiver || !receiver->started()) {
+                continue;
             }
 
-            // Create a new video sink with fresh GL textures
+            // Create a fresh sink with clean GL state
+            QGCCorePlugin::instance()->releaseVideoSink(receiver->sink());
             void *newSink = QGCCorePlugin::instance()->createVideoSink(receiver->widget(), receiver);
             if (!newSink) {
                 qCCritical(VideoManagerLog) << "Failed to create new video sink";
-                return;
+                continue;
             }
 
             receiver->setSink(newSink);
             receiver->startDecoding(newSink);
-            qCDebug(VideoManagerLog) << "Decoding restarted with new sink";
-        });
-    }
+            qCDebug(VideoManagerLog) << "Decoding restarted with fresh sink";
+        }
+    });
 }
 
 void VideoManager::_restartVideo(VideoReceiver *receiver)
@@ -784,6 +792,28 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
             _decoding = active;
             emit decodingChanged();
         }
+    });
+
+    // When the decoding branch hits an error (e.g. GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT
+    // during caps renegotiation), GstVideoReceiver force-shuts down just the decoding
+    // branch and emits this signal. We create a fresh video sink and restart decoding
+    // while RTSP stays alive, avoiding the teardown/reconnect loop.
+    (void) connect(receiver, &VideoReceiver::decodingError, this, [this, receiver]() {
+        qCDebug(VideoManagerLog) << "Decoding error on" << receiver->name() << "- restarting with fresh sink";
+
+        // Release the old sink and create a fresh one
+        QGCCorePlugin::instance()->releaseVideoSink(receiver->sink());
+        void *newSink = QGCCorePlugin::instance()->createVideoSink(receiver->widget(), receiver);
+        if (!newSink) {
+            qCCritical(VideoManagerLog) << "Failed to create fresh video sink after decoding error";
+            return;
+        }
+
+        receiver->setSink(newSink);
+        // Decoding branch was already force-shut down by GstVideoReceiver before
+        // emitting decodingError, so just start with the fresh sink.
+        receiver->startDecoding(newSink);
+        qCDebug(VideoManagerLog) << "Decoding restarted with fresh sink after error";
     });
 
     (void) connect(receiver, &VideoReceiver::recordingChanged, this, [this, receiver](bool active) {

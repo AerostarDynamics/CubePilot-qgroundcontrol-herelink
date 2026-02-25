@@ -16,6 +16,8 @@
 #include <QtCore/QTimer>
 #include <QtCore/QWaitCondition>
 
+#include <atomic>
+
 #include <glib.h>
 #include <gst/gstelement.h>
 #include <gst/gstpad.h>
@@ -65,6 +67,8 @@ public slots:
     void stop() override;
     void startDecoding(void *sink) override;
     void stopDecoding() override;
+    void restartDecoding(void *newSink) override;
+    void suspendDecoding() override;
     void startRecording(const QString &videoFile, FILE_FORMAT format) override;
     void stopRecording() override;
     void takeScreenshot(const QString &imageFile) override;
@@ -107,6 +111,7 @@ private:
 
     GstElement *_decoder = nullptr;
     GstElement *_decoderValve = nullptr;
+    GstElement *_h264parse = nullptr;
     GstElement *_fileSink = nullptr;
     GstElement *_pipeline = nullptr;
     GstElement *_recorderValve = nullptr;
@@ -116,6 +121,10 @@ private:
     GstVideoWorker *_worker = nullptr;
     gulong _teeProbeId = 0;
     gulong _videoSinkProbeId = 0;
+    gulong _postDecoderDropProbeId = 0;
+    GstPad *_postDecoderDropProbePad = nullptr;
+    std::atomic<bool> _decodingErrorPending{false};
+    bool _hasDecodedBefore = false;
 
     static constexpr const char *_kFileMux[FILE_FORMAT_MAX + 1] = {
         "matroskamux",

@@ -340,6 +340,11 @@ void GstVideoReceiver::startDecoding(void *sink)
 
     qCDebug(GstVideoReceiverLog) << "Starting decoding" << _uri;
 
+    // Clear the decoding error flag now that we're on the worker thread.
+    // All pending bus error recovery lambdas have been processed by this point
+    // (they were queued before us). This allows future GL errors to trigger recovery.
+    _decodingErrorPending = false;
+
     if (!_widget) {
         qCDebug(GstVideoReceiverLog) << "Video Widget is NULL" << _uri;
         _dispatchSignal([this]() { emit onStartDecodingComplete(STATUS_FAIL); });
@@ -399,6 +404,10 @@ void GstVideoReceiver::startDecoding(void *sink)
                  "drop", FALSE,
                  nullptr);
 
+    // NOTE: The post-decoder valve opening is scheduled from _addVideoSink,
+    // not here, because the OMX decoder has a dynamic src pad — _addVideoSink
+    // is called from pad-added on the streaming thread after startDecoding returns.
+
     qCDebug(GstVideoReceiverLog) << "Decoding started" << _uri;
 
     _dispatchSignal([this]() { emit onStartDecodingComplete(STATUS_OK); });
@@ -430,6 +439,67 @@ void GstVideoReceiver::stopDecoding()
     // FIXME: it is much better to emit onStopDecodingComplete() after decoding is really stopped
     // (which happens later due to async design) but as for now it is also not so bad...
     _dispatchSignal([this, ret](){ emit onStopDecodingComplete(ret ? STATUS_OK : STATUS_FAIL); });
+}
+
+void GstVideoReceiver::suspendDecoding()
+{
+    // Close the valve IMMEDIATELY on the calling thread before dispatching
+    // the heavy teardown work to the worker thread. g_object_set is thread-safe.
+    // This prevents frames from reaching the old decoder during the ~200ms
+    // dispatch latency, which would cause gl_sync failures that poison the
+    // shared GL context and persist across decoder restarts.
+    if (_decoderValve) {
+        g_object_set(_decoderValve, "drop", TRUE, nullptr);
+        qCDebug(GstVideoReceiverLog) << "Valve closed immediately (before worker dispatch)";
+    }
+
+    if (_needDispatch()) {
+        _worker->dispatch([this]() { suspendDecoding(); });
+        return;
+    }
+
+    qCDebug(GstVideoReceiverLog) << "Suspending decoding (keeping RTSP alive)"
+                                 << "_decoder=" << (_decoder ? "yes" : "no")
+                                 << "_decoding=" << _decoding
+                                 << _uri;
+
+    if (_decoder || _decoding) {
+        // Valve already closed above, proceed to teardown
+        _shutdownDecodingBranch();
+        qCDebug(GstVideoReceiverLog) << "Decoding suspended successfully";
+    } else {
+        qCDebug(GstVideoReceiverLog) << "Nothing to suspend (no decoder, not decoding)";
+    }
+}
+
+void GstVideoReceiver::restartDecoding(void *newSink)
+{
+    if (!newSink) {
+        qCCritical(GstVideoReceiverLog) << "VideoSink is NULL" << _uri;
+        return;
+    }
+
+    // Close valve immediately to stop frames reaching the old decoder
+    // during worker dispatch latency. g_object_set is thread-safe.
+    if (_decoderValve) {
+        g_object_set(_decoderValve, "drop", TRUE, nullptr);
+    }
+
+    if (_needDispatch()) {
+        _worker->dispatch([this, newSink]() mutable { restartDecoding(newSink); });
+        return;
+    }
+
+    qCDebug(GstVideoReceiverLog) << "Restarting decoding atomically" << _uri;
+
+    if (_decoder || _decoding) {
+        // Valve already closed above, proceed to teardown
+        _shutdownDecodingBranch();
+    }
+
+    // Now start decoding with the fresh sink (runs in same worker dispatch,
+    // so no frames are missed between shutdown and startup).
+    startDecoding(newSink);
 }
 
 void GstVideoReceiver::startRecording(const QString &videoFile, FILE_FORMAT format)
@@ -1048,15 +1118,16 @@ bool GstVideoReceiver::_addDecoder(GstElement *src)
     GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(_pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline-with-decoder");
 
     // Add h264parse to convert AVC to byte-stream format for OMX decoder
-    GstElement *h264parse = gst_element_factory_make("h264parse", nullptr);
-    if (h264parse) {
+    _h264parse = gst_element_factory_make("h264parse", nullptr);
+    if (_h264parse) {
         // Configure h264parse to output byte-stream format
-        g_object_set(h264parse, "config-interval", -1, nullptr);
+        g_object_set(_h264parse, "config-interval", -1, nullptr);
 
-        gst_bin_add(GST_BIN(_pipeline), h264parse);
-        gst_element_sync_state_with_parent(h264parse);
+        (void) gst_object_ref(_h264parse);
+        gst_bin_add(GST_BIN(_pipeline), _h264parse);
+        gst_element_sync_state_with_parent(_h264parse);
 
-        if (!gst_element_link_many(src, h264parse, _decoder, nullptr)) {
+        if (!gst_element_link_many(src, _h264parse, _decoder, nullptr)) {
             qCCritical(GstVideoReceiverLog) << "Unable to link decoder with h264parse";
             return false;
         }
@@ -1099,22 +1170,63 @@ bool GstVideoReceiver::_addVideoSink(GstPad *pad)
 {
     GstCaps *caps = gst_pad_query_caps(pad, nullptr);
 
+    // On restarts (_hasDecodedBefore=true), install a pad probe on the decoder's
+    // src pad BEFORE linking to the video sink. The probe drops BOTH buffers AND
+    // downstream events (including caps). Additionally, keep the video sink in
+    // NULL state during the reconfiguration window to prevent ANY GL resource
+    // allocation (even from upstream caps queries during state transitions).
+    //
+    // Without these protections, glcolorconvert creates an FBO with the initial
+    // SurfaceTexture. When OMX output port reconfiguration recreates the
+    // SurfaceTexture (~1.1s later), the FBO's texture attachment becomes invalid
+    // → GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT.
+    //
+    // After the reconfiguration window (3s), we:
+    // 1. Remove the probe → check_sticky re-forwards latest caps
+    // 2. Sync the video sink state → PLAYING → GL resources created with
+    //    the stable post-reconfiguration texture
+    //
+    // On initial startup (_hasDecodedBefore=false), the GL error doesn't occur.
+    if (_hasDecodedBefore) {
+        // pad IS the decoder's src pad (passed from _onNewDecoderPad)
+        _postDecoderDropProbePad = GST_PAD(gst_object_ref(pad));
+        _postDecoderDropProbeId = gst_pad_add_probe(
+            _postDecoderDropProbePad,
+            static_cast<GstPadProbeType>(GST_PAD_PROBE_TYPE_BUFFER | GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM),
+            [](GstPad *, GstPadProbeInfo *, gpointer) -> GstPadProbeReturn {
+                return GST_PAD_PROBE_DROP;
+            },
+            nullptr, nullptr);
+        qWarning() << "GstVideoReceiver: Drop probe installed BEFORE link (blocking during OMX reconfiguration)";
+    }
+
     (void) gst_object_ref(_videoSink); // gst_bin_add() will steal one reference
     (void) gst_bin_add(GST_BIN(_pipeline), _videoSink);
 
     if (!gst_element_link(_decoder, _videoSink)) {
+        // Clean up probe if link fails
+        if (_postDecoderDropProbeId != 0 && _postDecoderDropProbePad) {
+            gst_pad_remove_probe(_postDecoderDropProbePad, _postDecoderDropProbeId);
+            _postDecoderDropProbeId = 0;
+            gst_clear_object(&_postDecoderDropProbePad);
+        }
         (void) gst_bin_remove(GST_BIN(_pipeline), _videoSink);
-        qCCritical(GstVideoReceiverLog) << "Unable to link video sink";
+        qCCritical(GstVideoReceiverLog) << "Unable to link decoder to video sink";
         gst_clear_caps(&caps);
         return false;
     }
 
     g_object_set(_videoSink,
                  "widget", _widget,
-                 "sync", (_buffer >= 0),
+                 "sync", FALSE,
                  NULL);
 
-    (void) gst_element_sync_state_with_parent(_videoSink);
+    // Only sync video sink state immediately on initial startup.
+    // On restarts, defer state sync until after reconfiguration window
+    // to prevent GL resource allocation with pre-reconfiguration texture.
+    if (!_hasDecodedBefore) {
+        (void) gst_element_sync_state_with_parent(_videoSink);
+    }
 
     GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(_pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline-with-videosink");
 
@@ -1133,6 +1245,28 @@ bool GstVideoReceiver::_addVideoSink(GstPad *pad)
         _dispatchSignal([this]() { emit videoSizeChanged(QSize()); });
     }
 
+    // Schedule probe removal + video sink state sync after OMX reconfiguration
+    // window (3s). The video sink stays in NULL state until then, preventing
+    // any GL resource allocation with the pre-reconfiguration texture.
+    if (_postDecoderDropProbeId != 0) {
+        qWarning() << "GstVideoReceiver: Holding video sink in NULL state for 3s OMX reconfiguration window";
+        _worker->dispatch([this]() {
+            QThread::msleep(3000);
+            if (_postDecoderDropProbeId != 0 && _postDecoderDropProbePad && _pipeline) {
+                gst_pad_remove_probe(_postDecoderDropProbePad, _postDecoderDropProbeId);
+                _postDecoderDropProbeId = 0;
+                gst_clear_object(&_postDecoderDropProbePad);
+                qWarning() << "GstVideoReceiver: Drop probe removed after reconfiguration window";
+            }
+            // NOW sync video sink state - GL resources will be created with
+            // post-reconfiguration texture
+            if (_videoSink && _pipeline) {
+                (void) gst_element_sync_state_with_parent(_videoSink);
+                qWarning() << "GstVideoReceiver: Video sink synced to PLAYING after reconfiguration window";
+            }
+        });
+    }
+
     gst_clear_caps(&caps);
     return true;
 }
@@ -1145,6 +1279,7 @@ void GstVideoReceiver::_noteTeeFrame()
 void GstVideoReceiver::_noteVideoSinkFrame()
 {
     _lastVideoFrameTime = QDateTime::currentSecsSinceEpoch();
+    _hasDecodedBefore = true;
     if (!_decoding) {
         _decoding = true;
         qCDebug(GstVideoReceiverLog) << "Decoding started";
@@ -1198,6 +1333,23 @@ bool GstVideoReceiver::_unlinkBranch(GstElement *from)
 
 void GstVideoReceiver::_shutdownDecodingBranch()
 {
+    if (_h264parse) {
+        GstObject *parent = gst_element_get_parent(_h264parse);
+        if (parent) {
+            (void) gst_bin_remove(GST_BIN(_pipeline), _h264parse);
+            (void) gst_element_set_state(_h264parse, GST_STATE_NULL);
+            gst_clear_object(&parent);
+        }
+        gst_clear_object(&_h264parse);
+    }
+
+    // Remove drop probe before destroying decoder (probe is on decoder's src pad)
+    if (_postDecoderDropProbeId != 0 && _postDecoderDropProbePad) {
+        gst_pad_remove_probe(_postDecoderDropProbePad, _postDecoderDropProbeId);
+        _postDecoderDropProbeId = 0;
+        gst_clear_object(&_postDecoderDropProbePad);
+    }
+
     if (_decoder) {
         GstObject *parent = gst_element_get_parent(_decoder);
         if (parent) {
@@ -1307,10 +1459,52 @@ gboolean GstVideoReceiver::_onBusMessage(GstBus * /* bus */, GstMessage *msg, gp
             g_clear_error(&error);
         }
 
-        pThis->_worker->dispatch([pThis]() {
-            qCDebug(GstVideoReceiverLog) << "Stopping because of error";
-            pThis->stop();
-        });
+        // Ignore errors from elements that have been removed from our pipeline.
+        // After a decoding restart, stale error messages from destroyed elements
+        // can arrive. Without this check, they'd trigger stop() and tear down RTSP.
+        GstObject *errorSrc = GST_MESSAGE_SRC(msg);
+        if (pThis->_pipeline && errorSrc &&
+            !gst_object_has_as_ancestor(errorSrc, GST_OBJECT(pThis->_pipeline))) {
+            qCDebug(GstVideoReceiverLog) << "Ignoring error from element no longer in pipeline";
+            break;
+        }
+
+        // Check if the error came from the decoding branch (video sink or decoder).
+        // GL errors (e.g. GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT during caps renegotiation)
+        // come from elements inside the qgcvideosinkbin (_videoSink). For these errors,
+        // we only restart the decoding branch instead of tearing down the entire pipeline
+        // (which would send RTSP TEARDOWN, causing the air unit to destroy its encoder).
+        bool isDecodingError = pThis->_decoding && errorSrc &&
+            ((pThis->_videoSink &&
+              (errorSrc == GST_OBJECT(pThis->_videoSink) ||
+               gst_object_has_as_ancestor(errorSrc, GST_OBJECT(pThis->_videoSink)))) ||
+             (pThis->_decoder &&
+              (errorSrc == GST_OBJECT(pThis->_decoder) ||
+               gst_object_has_as_ancestor(errorSrc, GST_OBJECT(pThis->_decoder)))));
+
+        // Use atomic compare-exchange to coalesce multiple bus error messages
+        // (from glcontextegl, glcolorconvert, omx-decoder) into a single recovery.
+        // Without this, each element's error triggers a separate decodingError,
+        // causing "Name 'omx-decoder' is not unique" when the second recovery
+        // tries to create a decoder while the first is still in the pipeline.
+        bool expected = false;
+        if (isDecodingError && pThis->_decodingErrorPending.compare_exchange_strong(expected, true)) {
+            pThis->_worker->dispatch([pThis]() {
+                qCDebug(GstVideoReceiverLog) << "Decoding error - restarting decoding branch only (keeping RTSP alive)";
+                if (pThis->_decoderValve) {
+                    g_object_set(pThis->_decoderValve, "drop", TRUE, nullptr);
+                }
+                pThis->_shutdownDecodingBranch();
+                pThis->_dispatchSignal([pThis]() { emit pThis->decodingError(); });
+            });
+        } else if (isDecodingError) {
+            qCDebug(GstVideoReceiverLog) << "Ignoring duplicate decoding error (recovery already pending)";
+        } else {
+            pThis->_worker->dispatch([pThis]() {
+                qCDebug(GstVideoReceiverLog) << "Stopping because of error";
+                pThis->stop();
+            });
+        }
         break;
     }
     case GST_MESSAGE_EOS:

@@ -53,6 +53,7 @@ private:
     uint32_t _cameraIdSetting;
     bool _settingInProgress;
     bool _cameraInfoReceived;
+    bool _resolutionSwitchPending;  // Suppress encoder resets during resolution change
     uint8_t _currentHdmiInput;
     uint8_t _currentResolution;
 

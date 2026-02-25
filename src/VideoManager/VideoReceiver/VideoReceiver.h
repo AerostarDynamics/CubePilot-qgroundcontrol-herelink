@@ -90,12 +90,15 @@ signals:
     void onStartRecordingComplete(STATUS status);
     void onStopRecordingComplete(STATUS status);
     void onTakeScreenshotComplete(STATUS status);
+    void decodingError();
 
 public slots:
     virtual void start(uint32_t timeout) = 0;
     virtual void stop() = 0;
     virtual void startDecoding(void *sink) = 0;
     virtual void stopDecoding() = 0;
+    virtual void restartDecoding(void *newSink) { stopDecoding(); startDecoding(newSink); }
+    virtual void suspendDecoding() { stopDecoding(); }
     virtual void startRecording(const QString &videoFile, FILE_FORMAT format) = 0;
     virtual void stopRecording() = 0;
     virtual void takeScreenshot(const QString &imageFile) = 0;

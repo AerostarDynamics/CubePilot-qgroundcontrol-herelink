@@ -23,6 +23,7 @@ VideoStreamControl::VideoStreamControl()
     _videoSettings = SettingsManager::instance()->videoSettings();
     _cameraIdSetting = _videoSettings->cameraId()->rawValue().toUInt();
     _cameraInfoReceived = false;
+    _resolutionSwitchPending = false;
     _currentHdmiInput = 0;  // Default to HDMI 1
     _currentResolution = 1;  // Default to 1080p
 
@@ -173,9 +174,15 @@ void VideoStreamControl::_handleVideoStreamInformation(mavlink_message_t& messag
         // Don't emit videoNeedsReset() here - it causes restart loops
     }
 
-    // Start streaming if needed
-    if (shouldStartStreaming) {
-        //_startVideoStreaming();
+    // Send VIDEO_START_STREAMING to ensure the air unit is streaming.
+    // But NOT during a resolution switch - the encoder already restarted
+    // from PARAM_EXT_SET, and sending this would reset it again, killing
+    // the stream right after the new decoder connects (flicker then black).
+    if (_resolutionSwitchPending) {
+        qCDebug(VideoStreamControlLog) << "Clearing resolution switch flag, skipping VIDEO_START_STREAMING";
+        _resolutionSwitchPending = false;
+    } else {
+        _startVideoStreaming();
     }
 
     // Always unlock UI when we get camera info - the buttons will show correct state
@@ -217,6 +224,17 @@ void VideoStreamControl::_handleHeartbeatInfo(LinkInterface* link, mavlink_messa
     //}
 
     _requestVideoStreamInfo();
+
+    // Send VIDEO_START_STREAMING on first heartbeat / peer reset to recover
+    // from stuck states. But NOT during a resolution switch - the air unit's
+    // encoder restart changes custom_mode which looks like a "peer reset",
+    // and sending VIDEO_START_STREAMING would reset the encoder a second time,
+    // killing the stream right after the new decoder connects.
+    if (_resolutionSwitchPending) {
+        qCDebug(VideoStreamControlLog) << "Skipping VIDEO_START_STREAMING (resolution switch in progress)";
+    } else {
+        _startVideoStreaming();
+    }
 }
 
 void VideoStreamControl::_setCameraIdLockUi(bool lockUi)
@@ -309,6 +327,19 @@ void VideoStreamControl::_resolutionChanged()
 
         qCDebug(VideoStreamControlLog) << "Sending PARAM_EXT_SET:" << param_id << "=" << param_value;
 
+        // Suppress VIDEO_START_STREAMING calls during the resolution switch.
+        // The air unit's encoder restarts (new PID in heartbeat custom_mode),
+        // which triggers "remote peer reset" in _handleHeartbeatInfo and then
+        // _handleVideoStreamInformation. Without this flag, both handlers
+        // would call _startVideoStreaming() which resets the encoder AGAIN,
+        // killing the stream right after the new decoder connects.
+        _resolutionSwitchPending = true;
+
+        // Suspend decoding and restart with fresh sink after delay.
+        // This keeps RTSP alive (avoids TEARDOWN → air unit encoder restart →
+        // ION ENOTTY) and is faster than a full pipeline restart.
+        emit decodingNeedsRestart();
+
         // Send PARAM_EXT_SET message
         mavlink_message_t msg;
         mavlink_param_ext_set_t param_set;
@@ -330,10 +361,6 @@ void VideoStreamControl::_resolutionChanged()
         // because it takes too long (20+ seconds) and we need to allow subsequent changes.
         _currentResolution = newResolution;
         emit currentResolutionChanged();
-
-        // Don't restart decoding - let GStreamer handle the resolution change dynamically.
-        // Restarting the decoder can cause GL context corruption leading to a restart loop.
-        qCDebug(VideoStreamControlLog) << "Resolution change requested - NOT restarting decoder";
     } else {
         qCDebug(VideoStreamControlLog) << "Resolution unchanged, no action needed";
     }
