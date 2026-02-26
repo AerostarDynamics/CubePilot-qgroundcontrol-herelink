@@ -15,6 +15,7 @@ import android.os.PowerManager;
 import android.net.wifi.WifiManager;
 import android.provider.Settings;
 import android.util.Log;
+import android.view.View;
 import android.view.WindowManager;
 import android.app.Activity;
 import android.os.storage.StorageManager;
@@ -49,7 +50,20 @@ public class QGCActivity extends QtActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Force immersive fullscreen BEFORE Qt initialization to prevent
+        // the window resize (small -> fullscreen) that can deadlock Qt6's
+        // render thread with Android's window management on startup.
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+
         super.onCreate(savedInstanceState);
+
+        getWindow().getDecorView().setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            | View.SYSTEM_UI_FLAG_FULLSCREEN);
 
         nativeInit();
         acquireWakeLock();

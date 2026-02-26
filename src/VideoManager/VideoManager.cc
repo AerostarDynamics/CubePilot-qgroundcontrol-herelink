@@ -128,7 +128,17 @@ void VideoManager::init(QQuickWindow *window)
         _initVideoReceiver(receiver, window);
     }
 
-    window->scheduleRenderJob(new FinishVideoInitialization(), QQuickWindow::BeforeSynchronizingStage);
+    // Wait for the first frame to be rendered before starting video. This ensures:
+    // - Qt scene graph and GL contexts are fully initialized
+    // - Android window has been resized to full screen
+    // - All EGL surfaces have been created
+    // Starting RTSP before the first frame can cause ANR on Android when the
+    // GStreamer streaming thread (and OMX decoder SurfaceTexture creation)
+    // becomes active during scene graph initialization and window surface setup.
+    (void) connect(window, &QQuickWindow::frameSwapped, this, [this, window]() {
+        disconnect(window, &QQuickWindow::frameSwapped, this, nullptr);
+        startVideo();
+    }, Qt::QueuedConnection);
 
     _initialized = true;
 }
@@ -716,11 +726,9 @@ void VideoManager::_startReceiver(VideoReceiver *receiver)
     const QString source = _videoSettings->videoSource()->rawValue().toString();
     /* The gstreamer rtsp source will switch to tcp if udp is not available after 5 seconds.
        So we should allow for some negotiation time for rtsp */
-
     const uint32_t timeoutSeconds = ((source == VideoSettings::videoSourceRTSP) ? _videoSettings->rtspTimeout()->rawValue().toUInt() : 15);
-    const uint32_t timeoutMs = timeoutSeconds * 1000;  // Convert seconds to milliseconds
+    const uint32_t timeoutMs = timeoutSeconds * 1000;
 
-    qWarning() << "VideoManager: Starting video receiver with timeout:" << timeoutSeconds << "seconds (" << timeoutMs << "ms)";
     receiver->start(timeoutMs);
 }
 
@@ -861,9 +869,6 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
 
     _videoReceivers.append(receiver);
 
-    if (hasVideo()) {
-        _startReceiver(receiver);
-    }
 }
 
 void VideoManager::startVideo()
@@ -877,19 +882,3 @@ void VideoManager::startVideo()
 }
 
 /*===========================================================================*/
-
-FinishVideoInitialization::FinishVideoInitialization()
-    : QRunnable()
-{
-    // qCDebug(VideoManagerLog) << this;
-}
-
-FinishVideoInitialization::~FinishVideoInitialization()
-{
-    // qCDebug(VideoManagerLog) << this;
-}
-
-void FinishVideoInitialization::run()
-{
-    VideoManager::instance()->startVideo();
-}

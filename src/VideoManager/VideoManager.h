@@ -11,14 +11,12 @@
 
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
-#include <QtCore/QRunnable>
 #include <QtCore/QSize>
 // #include <QtQmlIntegration/QtQmlIntegration>
 
 Q_DECLARE_LOGGING_CATEGORY(VideoManagerLog)
 
 class QQuickWindow;
-class FinishVideoInitialization;
 class SubtitleWriter;
 class Vehicle;
 class VideoReceiver;
@@ -145,15 +143,4 @@ private:
     QString _imageFile;
     QString _uvcVideoSourceID;
     Vehicle *_activeVehicle = nullptr;
-};
-
-/*===========================================================================*/
-
-class FinishVideoInitialization : public QRunnable
-{
-public:
-    FinishVideoInitialization();
-    ~FinishVideoInitialization();
-
-    void run() final;
 };
