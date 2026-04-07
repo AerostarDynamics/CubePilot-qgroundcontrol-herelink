@@ -150,6 +150,8 @@ public:
     Q_PROPERTY(TrackingStatus       trackingStatus          READ trackingStatus                                     CONSTANT)
     Q_PROPERTY(bool                 trackingImageStatus     READ trackingImageStatus                                NOTIFY trackingImageStatusChanged)
     Q_PROPERTY(QRectF               trackingImageRect       READ trackingImageRect                                  NOTIFY trackingImageStatusChanged)
+    Q_PROPERTY(int                  sysID                   READ sysID                                              NOTIFY infoChanged)
+    Q_PROPERTY(int                  compID                  READ compID                                             NOTIFY infoChanged)
 
     Q_INVOKABLE virtual void setCameraModeVideo       () = 0;
     Q_INVOKABLE virtual void setCameraModePhoto       () = 0;
@@ -187,6 +189,7 @@ public:
     virtual bool        photosInVideoMode   () = 0;
     virtual bool        videoInPhotoMode    () = 0;
 
+    virtual int         sysID               () = 0;
     virtual int         compID              () = 0;
     virtual bool        isBasic             () = 0;
     virtual VideoCaptureStatus videoCaptureStatus         () = 0;

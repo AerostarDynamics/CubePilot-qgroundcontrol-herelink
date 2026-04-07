@@ -178,6 +178,13 @@ VehicleCameraControl::~VehicleCameraControl()
 }
 
 //-----------------------------------------------------------------------------
+int
+VehicleCameraControl::sysID()
+{
+    return _vehicle ? _vehicle->id() : 0;
+}
+
+//-----------------------------------------------------------------------------
 void
 VehicleCameraControl::_initWhenReady()
 {

@@ -78,6 +78,7 @@ public:
     bool                hasZoom                     () override { return false; }
     bool                hasFocus                    () override { return false; }
     bool                hasTracking                 () override { return false; }
+    int                 sysID                       () override { return 0; }
     int                 compID                      () override { return 0; }
     bool                isBasic                     () override { return true; }
     StorageStatus       storageStatus               () override { return STORAGE_NOT_SUPPORTED; }

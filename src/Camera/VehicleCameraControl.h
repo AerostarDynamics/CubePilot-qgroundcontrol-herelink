@@ -87,6 +87,7 @@ public:
     virtual bool        photosInVideoMode   () { return _info.flags & CAMERA_CAP_FLAGS_CAN_CAPTURE_IMAGE_IN_VIDEO_MODE; }
     virtual bool        videoInPhotoMode    () { return _info.flags & CAMERA_CAP_FLAGS_CAN_CAPTURE_VIDEO_IN_IMAGE_MODE; }
 
+    virtual int                 sysID               ();
     virtual int                 compID              () { return _compID; }
     virtual bool                isBasic             () { return _settings.size() == 0; }
     virtual VideoCaptureStatus  videoCaptureStatus  ();

@@ -640,6 +640,15 @@ Rectangle {
                             }
                         }
                     }
+
+                    QGCLabel {
+                        Layout.alignment:   Qt.AlignHCenter
+                        text:               qsTr("MAVLink camera sysid: %1, compid: %2").arg(_camera.sysID).arg(_camera.compID)
+                        font.pointSize:     ScreenTools.smallFontPointSize
+                        color:              qgcPal.text
+                        opacity:            0.5
+                        visible:            _camera.sysID !== 0 || _camera.compID !== 0
+                    }
                 }
             }
         }
