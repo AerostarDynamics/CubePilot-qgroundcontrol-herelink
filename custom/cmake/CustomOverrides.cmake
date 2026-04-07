@@ -1,4 +1,4 @@
-set(QGC_APP_NAME "QGroundControl-Herelink")
+set(QGC_APP_NAME "QGroundControl-v5")
 set(QGC_APP_DESCRIPTION "QGroundControl Herelink")
 set(QGC_APP_COPYRIGHT "Copyright (C) 2025 Cubepilot. All rights reserved.")
 set(QGC_ORG_DOMAIN "org.cubepilot")

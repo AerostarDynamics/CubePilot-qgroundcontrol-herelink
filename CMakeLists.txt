@@ -243,6 +243,7 @@ qt_policy(
 #######################################################
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    add_link_options(-s)
     add_compile_definitions(
         NDEBUG
         QT_NO_DEBUG

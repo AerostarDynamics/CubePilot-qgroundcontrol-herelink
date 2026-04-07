@@ -36,7 +36,6 @@ jobs:
         shell: bash
 
     env:
-      ARTIFACT: QGroundControl.apk
       PACKAGE: QGroundControl
       QT_VERSION: 6.6.3
       QT_ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/deploy/android/android_release.keystore
@@ -57,6 +56,12 @@ jobs:
         working-directory:  ${{ github.workspace }}
         run: |
           git fetch --all --tags -f --depth 1
+
+      - name: Determine artifact name
+        id: artifact
+        run: |
+          VERSION=$(git describe --always --abbrev=0)
+          echo "name=QGroundControl-${VERSION}-herelink.apk" >> $GITHUB_OUTPUT
 
       - name: Initial Setup
         uses: ./.github/actions/common
@@ -87,17 +92,17 @@ jobs:
         working-directory: ${{ runner.temp }}/shadow_build_dir
         run: cmake --build . --target all --config ${{ matrix.BuildType }}
 
-      - run: cp ${{ runner.temp }}/shadow_build_dir/android-build/*.apk ${{ runner.temp }}/shadow_build_dir/${{ env.ARTIFACT }}
+      - run: cp ${{ runner.temp }}/shadow_build_dir/android-build/*.apk ${{ runner.temp }}/shadow_build_dir/${{ steps.artifact.outputs.name }}
 
       - name: Save APK
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.ARTIFACT }}
-          path: ${{ runner.temp }}/shadow_build_dir/android-build/*.apk
+          name: ${{ steps.artifact.outputs.name }}
+          path: ${{ runner.temp }}/shadow_build_dir/${{ steps.artifact.outputs.name }}
 
       - name: Create GitHub Release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ runner.temp }}/shadow_build_dir/${{ env.ARTIFACT }}
+          files: ${{ runner.temp }}/shadow_build_dir/${{ steps.artifact.outputs.name }}
           generate_release_notes: true
