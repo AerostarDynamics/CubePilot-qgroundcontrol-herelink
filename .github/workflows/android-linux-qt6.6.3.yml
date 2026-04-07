@@ -61,7 +61,7 @@ jobs:
         id: artifact
         run: |
           VERSION=$(git describe --always --abbrev=0)
-          echo "name=QGroundControl-${VERSION}-herelink.apk" >> $GITHUB_OUTPUT
+          echo "name=QGroundControl-${VERSION}.apk" >> $GITHUB_OUTPUT
 
       - name: Initial Setup
         uses: ./.github/actions/common
