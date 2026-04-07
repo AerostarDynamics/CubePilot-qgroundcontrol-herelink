@@ -20,18 +20,26 @@ Also see:
 
 ## Sideloading via ADB
 
-First, install `adb` (Android Debug Bridge) if you don't have it already:
+You can install the Herelink QGroundControl-v5 APK manually on your Herelink controller using ADB over USB. Follow the steps below if you're not familiar with sideloading.
+
+### Install ADB
+
+Install `adb` (Android Debug Bridge) if you don't have it already:
 
 - **Linux (Debian/Ubuntu):** `sudo apt install android-tools-adb`
 - **macOS:** `brew install android-platform-tools`
 - **Windows:** Download [Android SDK Platform-Tools](https://developer.android.com/tools/releases/platform-tools) and extract it. Add the folder to your PATH or run `adb` from there directly.
 
-To install the Herelink QGroundControl-v5 APK manually on your Herelink controller:
+### Enable USB debugging
+
+1. Enable developer mode on the Herelink controller: `Settings` -> `About phone` -> Tap `Build number` 7 times.
+2. Then, enable USB debugging in `Settings` > `Developer options` -> `USB debugging`.
+3. Connect the Herelink controller to your computer via USB.
+
+### Install the APK
 
 1. Download the latest APK from the [Releases](https://github.com/CubePilot/qgroundcontrol-herelink/releases) page.
-2. Connect the Herelink controller to your computer via USB.
-3. Enable developer mode on the Herelink controller (tap the build number 7 times in Settings > About).
-4. Install the APK:
+2. Install the APK:
    ```
    adb install QGroundControl-v5.0.8.1-herelink.apk
    ```
@@ -39,3 +47,4 @@ To install the Herelink QGroundControl-v5 APK manually on your Herelink controll
    ```
    adb install -r QGroundControl-v5.0.8.1-herelink.apk
    ```
+
