@@ -43,7 +43,7 @@ jobs:
       - name: Decode Custom Keystore File
         run: |
           mkdir -p ${{ github.workspace }}/deploy/android
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > ${{ env.QT_ANDROID_KEYSTORE_PATH }}
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > ${{ env.QT_ANDROID_KEYSTORE_PATH }}
 
       - name: Get all tags for correct version determination
         working-directory:  ${{ github.workspace }}
