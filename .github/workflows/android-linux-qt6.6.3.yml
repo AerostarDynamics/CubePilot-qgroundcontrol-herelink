@@ -2,6 +2,11 @@ name: Android-Linux-Qt-6.6.3
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+    paths-ignore:
+      - 'docs/**' # Do not trigger for any changes under docs
 
 # concurrency:
 #   group: ${{ github.workflow }}-${{ github.ref }}
