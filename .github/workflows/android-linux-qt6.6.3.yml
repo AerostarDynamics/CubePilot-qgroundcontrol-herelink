@@ -22,7 +22,7 @@ jobs:
     env:
       PACKAGE: QGroundControl
       QT_VERSION: 6.6.3
-      QT_ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/deploy/android/android_release.keystore
+      QT_ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/deploy/android/AeroStar-Herelink-QGC.keystore
       QT_ANDROID_KEYSTORE_ALIAS: QGCAndroidKeyStore
       QT_ANDROID_KEYSTORE_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       QT_ANDROID_KEYSTORE_KEY_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -35,6 +35,20 @@ jobs:
           submodules: recursive
           fetch-depth: 1
           fetch-tags: false
+
+      # =====================================================================================================
+      # Decode Base64 encoded keystore from repository secret and create keystore file as specified by the
+      # QT_ANDROID_KEYSTORE_PATH variable.
+      #
+      # AeroStar's implementation differs from the CubePilot (Herelink) implementation in that the CubePilot
+      # implementation has the .keystore file residing directly within the repository. The AeroStar implementation
+      # has the keystore as Base64 encoded text in a repository secret. The AeroStar implementation was at the
+      # recommendation of Google AI as a more secure implementation.
+      # =====================================================================================================
+      - name: Decode Custom Keystore File
+        run: |
+          mkdir -p ${{ github.workspace }}/deploy/android
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > ${{ env.QT_ANDROID_KEYSTORE_PATH }}
 
       - name: Get all tags for correct version determination
         working-directory:  ${{ github.workspace }}
