@@ -1,23 +1,7 @@
 name: Android-Linux-Qt-6.6.3
 
 on:
-  push:
-    branches:
-      - master
-      - 'Stable*'
-    tags:
-      - 'v*'
-    paths-ignore:
-      - 'docs/**' # Do not trigger for any changes under docs
-  pull_request:
-    paths:
-      - '.github/workflows/android-linux-qt6.6.3.yml'
-      - 'deploy/android/**'
-      - 'src/**'
-      - 'android/**'
-      - 'CMakeLists.txt'
-      - 'cmake/**'
-      - 'translations/*'
+  workflow_dispatch:
 
 # concurrency:
 #   group: ${{ github.workflow }}-${{ github.ref }}
