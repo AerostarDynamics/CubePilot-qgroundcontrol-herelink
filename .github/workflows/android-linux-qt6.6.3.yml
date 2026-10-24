@@ -33,8 +33,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 1
-          fetch-tags: false
+          # Full history: the app version (and Android versionCode) comes from the nearest tag via
+          # git describe; with depth 1 a branch build finds no tag and becomes 0.0.0, which Android
+          # treats as a downgrade of the installed release.
+          fetch-depth: 0
+          fetch-tags: true
 
       # =====================================================================================================
       # Decode Base64 encoded keystore from repository secret and create keystore file as specified by the
