@@ -1,6 +1,6 @@
 set(QGC_APP_NAME "QGroundControl-v5")
-set(QGC_APP_DESCRIPTION "QGroundControl Herelink")
-set(QGC_APP_COPYRIGHT "Copyright (C) 2025 Cubepilot. All rights reserved.")
+set(QGC_APP_DESCRIPTION "Aerostar GCS for Herelink")
+set(QGC_APP_COPYRIGHT "Copyright (C) 2025 Cubepilot. Copyright (C) 2026 Aerostar Dynamics. All rights reserved.")
 set(QGC_ORG_DOMAIN "org.cubepilot")
 set(QGC_ORG_NAME "Cubepilot")
 set(QGC_QT_ANDROID_MIN_SDK_VERSION "25")

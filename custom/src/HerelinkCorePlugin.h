@@ -28,6 +28,9 @@ public:
     bool        overrideSettingsGroupVisibility        (const QString& name) override;
     bool        adjustSettingMetaData                  (const QString& settingsGroup, FactMetaData& metaData) override;
     void        factValueGridCreateDefaultSettings     (FactValueGrid* factValueGrid) override;
+    // Aerostar logo in the fly-view toolbar: white lettering for the dark (indoor) palette, black for the light one
+    QString     brandImageIndoor                       (void) const override { return QStringLiteral("/custom/img/AerostarLogoWhite.png"); }
+    QString     brandImageOutdoor                      (void) const override { return QStringLiteral("/custom/img/AerostarLogoBlack.png"); }
 
 
 private slots:
