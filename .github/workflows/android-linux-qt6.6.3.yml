@@ -56,7 +56,7 @@ jobs:
       - name: Get all tags for correct version determination
         working-directory:  ${{ github.workspace }}
         run: |
-          git fetch --all --tags -f --depth 1
+          git fetch --all --tags -f   # no --depth: it would cut the full history back to one commit
 
       - name: Determine artifact name
         id: artifact
