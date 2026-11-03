@@ -42,7 +42,7 @@ private slots:
 private:
     HerelinkOptions* _herelinkOptions = nullptr;
     QElapsedTimer    _startTimer;
-    static constexpr int kSplashMinMs = 2500;
+    static constexpr int kSplashMinMs = 1500;   // 2500 was ~1 s too long on the remote (user, 3 Nov 2026)
 };
 
 Q_APPLICATION_STATIC(HerelinkCorePlugin, _herelinkCorePluginInstance);
