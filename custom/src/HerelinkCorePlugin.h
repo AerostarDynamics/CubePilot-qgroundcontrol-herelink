@@ -6,6 +6,7 @@
 #include "QGCCorePlugin.h"
 #include "QGCLoggingCategory.h"
 
+#include <QElapsedTimer>
 #include <QObject>
 #include <QtCore/qapplicationstatic.h>
 
@@ -31,6 +32,8 @@ public:
     // Aerostar logo in the fly-view toolbar: white lettering for the dark (indoor) palette, black for the light one
     QString     brandImageIndoor                       (void) const override { return QStringLiteral("/custom/img/AerostarLogoWhite.png"); }
     QString     brandImageOutdoor                      (void) const override { return QStringLiteral("/custom/img/AerostarLogoBlack.png"); }
+    // Aerostar start-up screen: keep it up until the main window exists, for at least kSplashMinMs
+    void        createRootWindow                       (QQmlApplicationEngine* qmlEngine) override;
 
 
 private slots:
@@ -38,6 +41,8 @@ private slots:
 
 private:
     HerelinkOptions* _herelinkOptions = nullptr;
+    QElapsedTimer    _startTimer;
+    static constexpr int kSplashMinMs = 2500;
 };
 
 Q_APPLICATION_STATIC(HerelinkCorePlugin, _herelinkCorePluginInstance);

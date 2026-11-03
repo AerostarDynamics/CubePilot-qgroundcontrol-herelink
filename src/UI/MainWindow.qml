@@ -155,7 +155,7 @@ ApplicationWindow {
     }
 
     function showSettingsTool(settingsPage = "") {
-        showTool(qsTr("Application Settings"), "qrc:/qml/QGroundControl/Controls/AppSettings.qml", "/res/QGCLogoWhite")
+        showTool(qsTr("Application Settings"), "qrc:/qml/QGroundControl/Controls/AppSettings.qml", "qrc:/custom/img/AerostarCompassMono.png")  // Aerostar: was QGC logo
         if (settingsPage !== "") {
             toolDrawerLoader.item.showSettingsPage(settingsPage)
         }
@@ -383,7 +383,7 @@ ApplicationWindow {
                             height:             toolSelectDialog._toolButtonHeight
                             Layout.fillWidth:   true
                             text:               qsTr("Application Settings")
-                            imageResource:      "/res/QGCLogoFull.svg"
+                            imageResource:      "/custom/img/AerostarCompass.png"  // Aerostar: was QGC logo
                             imageColor:         "transparent"
                             visible:            !QGroundControl.corePlugin.options.combineSettingsAndSetup
                             onClicked: {

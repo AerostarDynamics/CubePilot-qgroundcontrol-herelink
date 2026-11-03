@@ -10,6 +10,11 @@
 #include "InstrumentValueData.h"
 #include "FactValueGrid.h"
 
+#include <QtCore/QTimer>
+#ifdef Q_OS_ANDROID
+#include <QtCore/QCoreApplication>  // QNativeInterface::QAndroidApplication
+#endif
+
 #include <list>
 
 QGC_LOGGING_CATEGORY(HerelinkCorePluginLog, "HerelinkCorePluginLog")
@@ -22,11 +27,22 @@ HerelinkCorePlugin* HerelinkCorePlugin::instance()
 HerelinkCorePlugin::HerelinkCorePlugin(QObject* parent)
     : QGCCorePlugin(parent)
 {
+    _startTimer.start();
     _herelinkOptions = new HerelinkOptions(this, nullptr);
 
     connect(MultiVehicleManager::instance(), &MultiVehicleManager::activeVehicleChanged, this, &HerelinkCorePlugin::_activeVehicleChanged);
 }
 
+
+void HerelinkCorePlugin::createRootWindow(QQmlApplicationEngine* qmlEngine)
+{
+    QGCCorePlugin::createRootWindow(qmlEngine);
+#ifdef Q_OS_ANDROID
+    // Main window is loaded; let it draw its first frames, keep the logo up for at least kSplashMinMs in total
+    const int waitMs = qMax(500, kSplashMinMs - static_cast<int>(_startTimer.elapsed()));
+    QTimer::singleShot(waitMs, this, []() { QNativeInterface::QAndroidApplication::hideSplashScreen(400); });
+#endif
+}
 
 bool HerelinkCorePlugin::overrideSettingsGroupVisibility(const QString& name)
 {

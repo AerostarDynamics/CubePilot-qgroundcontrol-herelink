@@ -16,7 +16,7 @@ ListModel {
     ListElement {
         name: qsTr("General")
         url: "qrc:/qml/QGroundControl/AppSettings/GeneralSettings.qml"
-        iconUrl: "qrc:/res/QGCLogoWhite.svg"
+        iconUrl: "qrc:/custom/img/AerostarCompassMono.png"  // Aerostar: was QGC logo
         pageVisible: function() { return true }
     }
 

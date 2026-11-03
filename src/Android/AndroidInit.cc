@@ -110,7 +110,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved)
 
     JoystickAndroid::setNativeMethods();
 
-    QNativeInterface::QAndroidApplication::hideSplashScreen(333);
+    // Aerostar: the splash is sticky (custom AndroidManifest.xml) and HerelinkCorePlugin::createRootWindow hides it
+    // once the main window exists, so the logo no longer just flashes by.
 
     return JNI_VERSION_1_6;
 }

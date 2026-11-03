@@ -2,6 +2,8 @@
     <qresource prefix="custom/img">
         <file alias="AerostarLogoWhite.png">res/img/aerostar_logo_white.png</file>
         <file alias="AerostarLogoBlack.png">res/img/aerostar_logo_black.png</file>
+        <file alias="AerostarCompass.png">res/img/aerostar_compass.png</file>
+        <file alias="AerostarCompassMono.png">res/img/aerostar_compass_mono.png</file>
     </qresource>
     <qresource prefix="/qmlimages">
     </qresource>
