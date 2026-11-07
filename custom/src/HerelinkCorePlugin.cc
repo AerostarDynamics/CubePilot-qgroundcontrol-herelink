@@ -13,6 +13,7 @@
 #include <QtCore/QTimer>
 #ifdef Q_OS_ANDROID
 #include <QtCore/QCoreApplication>  // QNativeInterface::QAndroidApplication
+#include <QtQml/QQmlApplicationEngine>
 #include <QtQuick/QQuickWindow>
 #endif
 
