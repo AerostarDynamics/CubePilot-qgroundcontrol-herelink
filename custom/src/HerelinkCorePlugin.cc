@@ -13,6 +13,7 @@
 #include <QtCore/QTimer>
 #ifdef Q_OS_ANDROID
 #include <QtCore/QCoreApplication>  // QNativeInterface::QAndroidApplication
+#include <QtQuick/QQuickWindow>
 #endif
 
 #include <list>
@@ -27,7 +28,6 @@ HerelinkCorePlugin* HerelinkCorePlugin::instance()
 HerelinkCorePlugin::HerelinkCorePlugin(QObject* parent)
     : QGCCorePlugin(parent)
 {
-    _startTimer.start();
     _herelinkOptions = new HerelinkOptions(this, nullptr);
 
     connect(MultiVehicleManager::instance(), &MultiVehicleManager::activeVehicleChanged, this, &HerelinkCorePlugin::_activeVehicleChanged);
@@ -38,9 +38,15 @@ void HerelinkCorePlugin::createRootWindow(QQmlApplicationEngine* qmlEngine)
 {
     QGCCorePlugin::createRootWindow(qmlEngine);
 #ifdef Q_OS_ANDROID
-    // Main window is loaded; let it draw its first frames, keep the logo up for at least kSplashMinMs in total
-    const int waitMs = qMax(500, kSplashMinMs - static_cast<int>(_startTimer.elapsed()));
-    QTimer::singleShot(waitMs, this, []() { QNativeInterface::QAndroidApplication::hideSplashScreen(400); });
+    // The main window takes ~5 s to load on the remote, so the logo is already up long enough (user, 6 Nov 2026):
+    // hide it as soon as the main window has drawn its first frame (no black gap), with a short fade.
+    // Fallback timer in case no frame signal arrives.
+    auto hide = []() { QNativeInterface::QAndroidApplication::hideSplashScreen(kSplashFadeMs); };
+    QQuickWindow* window = qmlEngine->rootObjects().isEmpty() ? nullptr : qobject_cast<QQuickWindow*>(qmlEngine->rootObjects().first());
+    if (window) {
+        connect(window, &QQuickWindow::frameSwapped, this, hide, Qt::SingleShotConnection);
+    }
+    QTimer::singleShot(window ? 3000 : 300, this, hide);
 #endif
 }
 
