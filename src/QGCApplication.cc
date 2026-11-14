@@ -482,7 +482,8 @@ void QGCApplication::showCriticalVehicleMessage(const QString &message)
 
 void QGCApplication::showAppMessage(const QString &message, const QString &title)
 {
-    const QString dialogTitle = title.isEmpty() ? applicationName() : title;
+    // Display name, not applicationName(): custom builds brand it (Aerostar GCS) without moving the settings location
+    const QString dialogTitle = title.isEmpty() ? applicationDisplayName() : title;
 
     QObject *const rootQmlObject = _rootQmlObject();
     if (rootQmlObject) {

@@ -11,6 +11,7 @@
 #include "FactValueGrid.h"
 
 #include <QtCore/QTimer>
+#include <QtGui/QGuiApplication>
 #ifdef Q_OS_ANDROID
 #include <QtCore/QCoreApplication>  // QNativeInterface::QAndroidApplication
 #include <QtQml/QQmlApplicationEngine>
@@ -30,6 +31,9 @@ HerelinkCorePlugin::HerelinkCorePlugin(QObject* parent)
     : QGCCorePlugin(parent)
 {
     _herelinkOptions = new HerelinkOptions(this, nullptr);
+    // Pop-up titles say "Aerostar GCS". The application NAME stays "QGroundControl-v5 Daily": it is the settings
+    // location, and changing it would reset every remote's saved settings.
+    QGuiApplication::setApplicationDisplayName(QStringLiteral("Aerostar GCS"));
 
     connect(MultiVehicleManager::instance(), &MultiVehicleManager::activeVehicleChanged, this, &HerelinkCorePlugin::_activeVehicleChanged);
 }
