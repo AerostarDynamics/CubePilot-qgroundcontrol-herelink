@@ -52,4 +52,6 @@ private:
 
     static int ACTION_DOWN, ACTION_UP, AXIS_HAT_X, AXIS_HAT_Y;
     static QMutex _mutex;
+
+    void _registerEventListeners();
 };

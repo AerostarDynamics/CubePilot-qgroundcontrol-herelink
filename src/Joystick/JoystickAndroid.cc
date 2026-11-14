@@ -65,6 +65,14 @@ JoystickAndroid::JoystickAndroid(const QString &name, int axisCount, int buttonC
     }
     qCDebug(JoystickAndroidLog) << "axis:" << _axisCount << "buttons:" << _buttonCount;
 
+    // The event listeners are registered by discover() AFTER it releases _mutex. Registering here, while discover()
+    // holds _mutex, deadlocked at start-up (Aerostar, 14 Nov 2026): Qt holds its listener lock while it delivers a
+    // stick event to handleGenericMotionEvent(), which waits for _mutex - so a stick event arriving during
+    // discover() froze the app on its splash screen about half the time.
+}
+
+void JoystickAndroid::_registerEventListeners()
+{
     QtAndroidPrivate::registerGenericMotionEventListener(this);
     QtAndroidPrivate::registerKeyEventListener(this);
 }
@@ -79,6 +87,7 @@ QMap<QString, Joystick*> JoystickAndroid::discover()
 {
     static QMap<QString, Joystick*> ret;
 
+    QList<JoystickAndroid*> created;
     QMutexLocker lock(&_mutex);
 
     const QJniObject object = QJniObject::callStaticObjectMethod<jintArray>("android/view/InputDevice", "getDeviceIds");
@@ -126,7 +135,9 @@ QMap<QString, Joystick*> JoystickAndroid::discover()
 
         qCDebug(JoystickAndroidLog) << name << "id:" << buff[i] << "axes:" << axisCount << "buttons:" << buttonCount;
 
-        ret[name] = new JoystickAndroid(name, axisCount, buttonCount, buff[i]);
+        JoystickAndroid *const joystick = new JoystickAndroid(name, axisCount, buttonCount, buff[i]);
+        ret[name] = joystick;
+        created.append(joystick);
     }
 
     for (auto i = ret.begin(); i != ret.end();) {
@@ -139,7 +150,14 @@ QMap<QString, Joystick*> JoystickAndroid::discover()
 
     env->ReleaseIntArrayElements(jarr, buff, 0);
 
-    return ret;
+    const QMap<QString, Joystick*> result = ret;
+    lock.unlock();
+    // Outside _mutex - see the note in the constructor
+    for (JoystickAndroid *const joystick : created) {
+        joystick->_registerEventListeners();
+    }
+
+    return result;
 }
 
 bool JoystickAndroid::handleKeyEvent(jobject event)
